@@ -49,6 +49,9 @@ export const CompactTemplate: React.FC<TemplateProps> = ({ data }) => {
           {personalInfo.email && <div>{personalInfo.email}</div>}
           {personalInfo.phone && <div>{personalInfo.phone}</div>}
           {personalInfo.location && <div>{personalInfo.location}</div>}
+          {personalInfo.birthDate && <div>{`Né(e) le ${personalInfo.birthDate}`}</div>}
+          {personalInfo.birthPlace && <div>{`Lieu de naissance : ${personalInfo.birthPlace}`}</div>}
+          {personalInfo.nationality && <div>{`Nationalité : ${personalInfo.nationality}`}</div>}
           {personalInfo.linkedin && <div>{personalInfo.linkedin}</div>}
           {personalInfo.website && <div>{personalInfo.website}</div>}
         </div>

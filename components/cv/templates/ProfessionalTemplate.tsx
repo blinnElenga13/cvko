@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CVData } from '@/types/cv';
-import { Mail, Phone, MapPin, Globe, Linkedin, Github, ExternalLink, Award, Briefcase, GraduationCap, Code, Languages, FolderGit2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe, Linkedin, Github, ExternalLink, Award, Briefcase, GraduationCap, Code, Languages, FolderGit2, Cake, Flag } from 'lucide-react';
 
 import { getPhotoContainerClasses, getFontClass } from '@/lib/theme-helpers';
 import { FormattedDescription } from '../FormattedDescription';
@@ -49,6 +49,21 @@ export const ProfessionalTemplate: React.FC<TemplateProps> = ({ data }) => {
             {personalInfo.location && (
               <span className="flex items-center gap-1.5">
                 {showIcons && <MapPin className="w-3.5 h-3.5" />} {personalInfo.location}
+              </span>
+            )}
+            {personalInfo.birthDate && (
+              <span className="flex items-center gap-1.5">
+                {showIcons && <Cake className="w-3.5 h-3.5" />} {personalInfo.birthDate}
+              </span>
+            )}
+            {personalInfo.birthPlace && (
+              <span className="flex items-center gap-1.5">
+                {showIcons && <MapPin className="w-3.5 h-3.5" />} {`Né(e) à ${personalInfo.birthPlace}`}
+              </span>
+            )}
+            {personalInfo.nationality && (
+              <span className="flex items-center gap-1.5">
+                {showIcons && <Flag className="w-3.5 h-3.5" />} {personalInfo.nationality}
               </span>
             )}
             {personalInfo.linkedin && (

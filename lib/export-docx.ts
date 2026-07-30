@@ -42,10 +42,21 @@ export async function generateDocx(cvData: CVData): Promise<Blob> {
   }
 
   // Contact Info Line
+  let birthString = '';
+  if (personalInfo.birthDate && personalInfo.birthPlace) {
+    birthString = `Né(e) le ${personalInfo.birthDate} à ${personalInfo.birthPlace}`;
+  } else if (personalInfo.birthDate) {
+    birthString = `Né(e) le ${personalInfo.birthDate}`;
+  } else if (personalInfo.birthPlace) {
+    birthString = `Lieu de naissance : ${personalInfo.birthPlace}`;
+  }
+
   const contactParts = [
     personalInfo.email,
     personalInfo.phone,
     personalInfo.location,
+    birthString,
+    personalInfo.nationality,
     personalInfo.linkedin,
     personalInfo.website,
     settings.templateId === 'tech' ? personalInfo.github : '',

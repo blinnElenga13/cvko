@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CVData } from '@/types/cv';
-import { Mail, Phone, MapPin, Globe, Linkedin, Github, Award, Briefcase, GraduationCap, Code, Languages, FolderGit2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe, Linkedin, Github, Award, Briefcase, GraduationCap, Code, Languages, FolderGit2, Cake, Flag } from 'lucide-react';
 import { getPhotoContainerClasses, getFontClass } from '@/lib/theme-helpers';
 import { FormattedDescription } from '../FormattedDescription';
 
@@ -108,6 +108,24 @@ export const ArtisticTemplate: React.FC<TemplateProps> = ({ data }) => {
               <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
                 {showIcons && <MapPin className="w-3.5 h-3.5" style={{ color: primaryColor }} />}
                 {personalInfo.location}
+              </span>
+            )}
+            {personalInfo.birthDate && (
+              <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
+                {showIcons && <Cake className="w-3.5 h-3.5" style={{ color: primaryColor }} />}
+                {personalInfo.birthDate}
+              </span>
+            )}
+            {personalInfo.birthPlace && (
+              <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
+                {showIcons && <MapPin className="w-3.5 h-3.5" style={{ color: primaryColor }} />}
+                {`Né(e) à ${personalInfo.birthPlace}`}
+              </span>
+            )}
+            {personalInfo.nationality && (
+              <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
+                {showIcons && <Flag className="w-3.5 h-3.5" style={{ color: primaryColor }} />}
+                {personalInfo.nationality}
               </span>
             )}
             {personalInfo.linkedin && (

@@ -30,6 +30,9 @@ export interface PersonalInfo {
   email: string;
   phone: string;
   location: string;
+  birthDate?: string;
+  birthPlace?: string;
+  nationality?: string;
   website: string;
   linkedin: string;
   github: string;

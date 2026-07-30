@@ -3,7 +3,7 @@
 import React from 'react';
 import { CVData } from '@/types/cv';
 import { getPhotoContainerClasses, getFontClass } from '@/lib/theme-helpers';
-import { Mail, Phone, MapPin, Globe, Linkedin, Github, Terminal, Cpu, Award, ExternalLink, Code2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe, Linkedin, Github, Terminal, Cpu, Award, ExternalLink, Code2, Cake, Flag } from 'lucide-react';
 import { FormattedDescription } from '../FormattedDescription';
 
 interface TemplateProps {
@@ -60,6 +60,24 @@ export const TechTemplate: React.FC<TemplateProps> = ({ data }) => {
               <span className="flex items-center gap-1">
                 {showIcons && <MapPin className="w-3 h-3 text-slate-400" />}
                 {personalInfo.location}
+              </span>
+            )}
+            {personalInfo.birthDate && (
+              <span className="flex items-center gap-1">
+                {showIcons && <Cake className="w-3 h-3 text-slate-400" />}
+                {personalInfo.birthDate}
+              </span>
+            )}
+            {personalInfo.birthPlace && (
+              <span className="flex items-center gap-1">
+                {showIcons && <MapPin className="w-3 h-3 text-slate-400" />}
+                {`Né(e) à ${personalInfo.birthPlace}`}
+              </span>
+            )}
+            {personalInfo.nationality && (
+              <span className="flex items-center gap-1">
+                {showIcons && <Flag className="w-3 h-3 text-slate-400" />}
+                {personalInfo.nationality}
               </span>
             )}
             {personalInfo.github && (

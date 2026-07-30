@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CVData } from '@/types/cv';
-import { Mail, Phone, MapPin, Globe, Linkedin, Github } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe, Linkedin, Github, Cake, Flag } from 'lucide-react';
 
 import { getPhotoContainerClasses, getFontClass } from '@/lib/theme-helpers';
 import { FormattedDescription } from '../FormattedDescription';
@@ -47,6 +47,9 @@ export const ElegantTemplate: React.FC<TemplateProps> = ({ data }) => {
           {personalInfo.email && <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" /> {personalInfo.email}</span>}
           {personalInfo.phone && <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" /> {personalInfo.phone}</span>}
           {personalInfo.location && <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {personalInfo.location}</span>}
+          {personalInfo.birthDate && <span className="flex items-center gap-1.5"><Cake className="w-3.5 h-3.5 text-slate-400" /> {personalInfo.birthDate}</span>}
+          {personalInfo.birthPlace && <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {`Né(e) à ${personalInfo.birthPlace}`}</span>}
+          {personalInfo.nationality && <span className="flex items-center gap-1.5"><Flag className="w-3.5 h-3.5 text-slate-400" /> {personalInfo.nationality}</span>}
           {personalInfo.linkedin && <span className="flex items-center gap-1.5"><Linkedin className="w-3.5 h-3.5 text-slate-400" /> {personalInfo.linkedin}</span>}
           {personalInfo.website && <span className="flex items-center gap-1.5"><Globe className="w-3.5 h-3.5 text-slate-400" /> {personalInfo.website}</span>}
 

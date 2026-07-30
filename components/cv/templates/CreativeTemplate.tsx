@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CVData } from '@/types/cv';
-import { Mail, Phone, MapPin, Globe, Linkedin, Github, ExternalLink, Award, Briefcase, GraduationCap, Code, Languages, FolderGit2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe, Linkedin, Github, ExternalLink, Award, Briefcase, GraduationCap, Code, Languages, FolderGit2, Cake, Flag } from 'lucide-react';
 
 import { getPhotoContainerClasses, getFontClass } from '@/lib/theme-helpers';
 import { FormattedDescription } from '../FormattedDescription';
@@ -66,6 +66,21 @@ export const CreativeTemplate: React.FC<TemplateProps> = ({ data }) => {
             {personalInfo.location && (
               <div className="flex items-center gap-2 text-white/95">
                 {showIcons && <MapPin className="w-3.5 h-3.5 shrink-0" />} {personalInfo.location}
+              </div>
+            )}
+            {personalInfo.birthDate && (
+              <div className="flex items-center gap-2 text-white/95">
+                {showIcons && <Cake className="w-3.5 h-3.5 shrink-0" />} {personalInfo.birthDate}
+              </div>
+            )}
+            {personalInfo.birthPlace && (
+              <div className="flex items-center gap-2 text-white/95">
+                {showIcons && <MapPin className="w-3.5 h-3.5 shrink-0" />} {`Né(e) à ${personalInfo.birthPlace}`}
+              </div>
+            )}
+            {personalInfo.nationality && (
+              <div className="flex items-center gap-2 text-white/95">
+                {showIcons && <Flag className="w-3.5 h-3.5 shrink-0" />} {personalInfo.nationality}
               </div>
             )}
             {personalInfo.linkedin && (

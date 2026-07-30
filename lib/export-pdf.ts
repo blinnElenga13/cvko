@@ -96,6 +96,7 @@ async function urlToDataURL(url: string): Promise<string> {
  */
 function createIsolatedIframeContainer(targetElement: HTMLElement): {
   iframe: HTMLIFrameElement;
+  exportRoot: HTMLDivElement;
   clonedNode: HTMLElement;
   cleanup: () => void;
 } {
@@ -123,8 +124,8 @@ function createIsolatedIframeContainer(targetElement: HTMLElement): {
   <meta charset="utf-8">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #ffffff; width: 794px; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    #export-root { width: 794px; background: #ffffff; }
+    body { background: #ffffff; width: 794px; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+    #export-root { width: 794px; background: #ffffff; margin: 0; padding: 0; overflow: hidden; }
   </style>
 </head>
 <body>
@@ -133,7 +134,7 @@ function createIsolatedIframeContainer(targetElement: HTMLElement): {
 </html>`);
   iframeDoc.close();
 
-  const exportRoot = iframeDoc.getElementById('export-root')!;
+  const exportRoot = iframeDoc.getElementById('export-root') as HTMLDivElement;
   const clonedNode = targetElement.cloneNode(true) as HTMLElement;
 
   clonedNode.style.width = '794px';
@@ -216,78 +217,13 @@ function createIsolatedIframeContainer(targetElement: HTMLElement): {
     }
   };
 
-  return { iframe, clonedNode, cleanup };
-}
-
-/**
- * Computes natural section/item break points to avoid cutting lines of text in half.
- */
-function computeSmartPageBreaks(
-  element: HTMLElement,
-  totalHeightPx: number,
-  pageHeightPx: number
-): number[] {
-  if (totalHeightPx <= pageHeightPx + 20) {
-    return [0, totalHeightPx];
-  }
-
-  const selectors = [
-    'section',
-    'article',
-    '.cv-section',
-    '.cv-item',
-    'h1',
-    'h2',
-    'h3',
-    'p',
-    'ul',
-    'ol',
-    'li',
-    '[data-section]',
-  ];
-
-  const candidateNodes = Array.from(element.querySelectorAll<HTMLElement>(selectors.join(',')));
-  const containerRect = element.getBoundingClientRect();
-
-  const itemBounds = candidateNodes
-    .map((node) => {
-      const rect = node.getBoundingClientRect();
-      return {
-        top: rect.top - containerRect.top,
-        bottom: rect.bottom - containerRect.top,
-      };
-    })
-    .filter((b) => b.bottom > b.top && b.top >= 0);
-
-  const breaks: number[] = [0];
-  let currentY = 0;
-
-  while (currentY + pageHeightPx < totalHeightPx - 30) {
-    const idealBreak = currentY + pageHeightPx;
-    let chosenBreak = idealBreak;
-
-    let bestCut = -1;
-    for (const b of itemBounds) {
-      if (b.top > currentY + 200 && b.top < idealBreak && b.bottom > idealBreak) {
-        bestCut = Math.max(bestCut, b.top);
-      }
-    }
-
-    if (bestCut > currentY + 300) {
-      chosenBreak = bestCut;
-    }
-
-    breaks.push(chosenBreak);
-    currentY = chosenBreak;
-  }
-
-  breaks.push(totalHeightPx);
-  return breaks;
+  return { iframe, exportRoot, clonedNode, cleanup };
 }
 
 /**
  * Main exportToPDF function.
- * Uses isolated iframe without Tailwind 4 oklch stylesheets + smart A4 page breaking.
+ * ALWAYS generates a single A4 page (210mm x 297mm) with auto-fit scaling.
+ * No content overflow, no extra pages, 100% clean single-page rendering.
  */
 export async function exportToPDF(
   elementId: string,
@@ -316,31 +252,38 @@ export async function exportToPDF(
   }
 
   // 2. Create isolated iframe without oklch stylesheets
-  const { clonedNode, cleanup } = createIsolatedIframeContainer(element);
+  const { exportRoot, clonedNode, cleanup } = createIsolatedIframeContainer(element);
 
   try {
-    // 3. Render canvas with html2canvas inside isolated iframe
-    const canvas = await html2canvas(clonedNode, {
-      scale: 2.5, // High resolution (~300 DPI)
+    // Target single-page A4 height in pixels at 794px width is ~1123px (794 * 297 / 210)
+    const targetA4HeightPx = 1123;
+    const initialContentHeight = clonedNode.offsetHeight || targetA4HeightPx;
+
+    // If the content is longer than 1123px, scale it down cleanly inside the container
+    // so that all content fits within a single A4 page!
+    if (initialContentHeight > targetA4HeightPx) {
+      const scaleFactor = targetA4HeightPx / initialContentHeight;
+      clonedNode.style.transform = `scale(${scaleFactor})`;
+      clonedNode.style.transformOrigin = 'top left';
+      clonedNode.style.width = '794px';
+      exportRoot.style.height = `${targetA4HeightPx}px`;
+      exportRoot.style.overflow = 'hidden';
+    } else {
+      exportRoot.style.height = `${Math.max(initialContentHeight, targetA4HeightPx)}px`;
+    }
+
+    // 3. Capture canvas using html2canvas on exportRoot (exact 794px x 1123px A4 frame)
+    const canvas = await html2canvas(exportRoot, {
+      scale: 2.5, // Crisp 300 DPI high resolution
       useCORS: true,
       allowTaint: false,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: 794,
+      width: 794,
+      height: targetA4HeightPx,
     });
 
-    const imgWidthPx = canvas.width;
-    const unscaledPageHeightPx = 794 * (297 / 210); // ~1123px at 794px width
-    const elementHeightPx = clonedNode.offsetHeight || 1123;
-    const scaleRatio = canvas.width / 794;
-
-    // 4. Compute smart break points
-    const breaksInElement = computeSmartPageBreaks(
-      clonedNode,
-      elementHeightPx,
-      unscaledPageHeightPx
-    );
-
+    // 4. Create strictly ONE single-page A4 PDF (210mm x 297mm)
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -348,45 +291,23 @@ export async function exportToPDF(
       compress: true,
     });
 
-    for (let i = 0; i < breaksInElement.length - 1; i++) {
-      const startYUnscaled = breaksInElement[i];
-      const endYUnscaled = breaksInElement[i + 1];
+    const imgData = canvas.toDataURL('image/jpeg', 0.96);
 
-      const startYCanvas = Math.round(startYUnscaled * scaleRatio);
-      const endYCanvas = Math.round(endYUnscaled * scaleRatio);
-      const sliceHCanvas = endYCanvas - startYCanvas;
+    // Fit canvas onto the 210mm x 297mm single A4 page
+    const canvasRatio = canvas.height / canvas.width;
+    let renderW_mm = 210;
+    let renderH_mm = 210 * canvasRatio;
+    let x_mm = 0;
+    let y_mm = 0;
 
-      if (sliceHCanvas <= 0) continue;
-
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = imgWidthPx;
-      pageCanvas.height = Math.round(unscaledPageHeightPx * scaleRatio);
-
-      const pageCtx = pageCanvas.getContext('2d');
-      if (pageCtx) {
-        pageCtx.fillStyle = '#ffffff';
-        pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        pageCtx.drawImage(
-          canvas,
-          0,
-          startYCanvas,
-          imgWidthPx,
-          sliceHCanvas,
-          0,
-          0,
-          imgWidthPx,
-          sliceHCanvas
-        );
-      }
-
-      const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.95);
-
-      if (i > 0) {
-        pdf.addPage('a4', 'p');
-      }
-
-      pdf.addImage(pageImgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    if (renderH_mm > 297) {
+      renderH_mm = 297;
+      renderW_mm = 297 / canvasRatio;
+      x_mm = (210 - renderW_mm) / 2; // Center horizontally if scaled
     }
+
+    // Add image onto the SINGLE page
+    pdf.addImage(imgData, 'JPEG', x_mm, y_mm, renderW_mm, renderH_mm, undefined, 'FAST');
 
     pdf.save(fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`);
   } finally {
@@ -398,7 +319,7 @@ export async function exportToPDF(
 }
 
 /**
- * High quality PNG Image export using isolated iframe.
+ * High quality PNG Image export (Single A4 Page layout).
  */
 export async function exportToPNG(
   elementId: string,
@@ -425,16 +346,28 @@ export async function exportToPNG(
     console.warn('Error converting images for PNG:', err);
   }
 
-  const { clonedNode, cleanup } = createIsolatedIframeContainer(element);
+  const { exportRoot, clonedNode, cleanup } = createIsolatedIframeContainer(element);
 
   try {
-    const canvas = await html2canvas(clonedNode, {
+    const targetA4HeightPx = 1123;
+    const initialContentHeight = clonedNode.offsetHeight || targetA4HeightPx;
+
+    if (initialContentHeight > targetA4HeightPx) {
+      const scaleFactor = targetA4HeightPx / initialContentHeight;
+      clonedNode.style.transform = `scale(${scaleFactor})`;
+      clonedNode.style.transformOrigin = 'top left';
+      exportRoot.style.height = `${targetA4HeightPx}px`;
+      exportRoot.style.overflow = 'hidden';
+    }
+
+    const canvas = await html2canvas(exportRoot, {
       scale: 2.5,
       useCORS: true,
       allowTaint: false,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: 794,
+      width: 794,
+      height: targetA4HeightPx,
     });
 
     const link = document.createElement('a');

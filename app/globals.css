@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    border-color: var(--color-gray-200, #e5e7eb);
+  }
+}
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-area {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+}
+
+/* Custom scrollbars for side panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Global Dark Mode Editor Interface styles */
+.dark-editor {
+  background-color: #0d121f !important; /* Rich deep dark background */
+  border-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-editor input,
+.dark-editor textarea,
+.dark-editor select {
+  background-color: #182032 !important; /* Deep dark input background */
+  border-color: #273549 !important;
+  color: #f8fafc !important;
+}
+
+.dark-editor input::placeholder,
+.dark-editor textarea::placeholder {
+  color: #64748b !important;
+}
+
+.dark-editor input:focus,
+.dark-editor textarea:focus,
+.dark-editor select:focus {
+  border-color: #475569 !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05) !important;
+}
+
+.dark-editor label {
+  color: #94a3b8 !important; /* Soft grey labels */
+}
+
+.dark-editor h1,
+.dark-editor h2,
+.dark-editor h3,
+.dark-editor h4 {
+  color: #f8fafc !important;
+}
+
+.dark-editor p,
+.dark-editor span {
+  color: #cbd5e1;
+}
+
+/* Sub-containers & cards inside experience/education list items */
+.dark-editor .bg-slate-50,
+.dark-editor .bg-slate-50\/80,
+.dark-editor .bg-slate-50\/50,
+.dark-editor .bg-slate-100\/80,
+.dark-editor .bg-slate-100 {
+  background-color: #151d30 !important;
+  border-color: #243048 !important;
+}
+
+.dark-editor .border-slate-200,
+.dark-editor .border-slate-200\/80,
+.dark-editor .border-slate-200\/60,
+.dark-editor .border-slate-100,
+.dark-editor .border-slate-300\/80 {
+  border-color: #243048 !important;
+}
+
+/* Text overrides */
+.dark-editor .text-slate-500,
+.dark-editor .text-slate-600,
+.dark-editor .text-slate-700,
+.dark-editor .text-slate-800 {
+  color: #94a3b8 !important;
+}
+
+.dark-editor .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+/* Nav & category buttons inside the editor */
+.dark-editor .bg-white.text-slate-600 {
+  background-color: #151d30 !important;
+  border-color: #243048 !important;
+  color: #cbd5e1 !important;
+}
+
+.dark-editor .bg-white.text-slate-600:hover {
+  background-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+/* Active navigation buttons inside dark mode */
+.dark-editor .bg-slate-900.text-white {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Custom buttons (e.g. "+ Ajouter", "Rédiger avec l'IA") */
+.dark-editor button.bg-slate-100 {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+.dark-editor button.bg-slate-100:hover {
+  background-color: #334155 !important;
+}
+
+/* Sliders active handles */
+.dark-editor .bg-slate-900 {
+  background-color: #38bdf8 !important; /* Sky accent inside dark mode */
+  color: #0f172a !important;
+}
+
+

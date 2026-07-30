@@ -3,6 +3,63 @@ import html2canvas from 'html2canvas';
 import { CVData } from '@/types/cv';
 
 /**
+ * Canvas-based native browser color parser.
+ * Converts ANY modern CSS color string (oklch, color-mix, lab, light-dark, hwb, etc.)
+ * to standard rgb() or rgba() format using native 2D canvas rendering context.
+ */
+const dummyCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+if (dummyCanvas) {
+  dummyCanvas.width = 1;
+  dummyCanvas.height = 1;
+}
+const dummyCtx = dummyCanvas ? dummyCanvas.getContext('2d', { willReadFrequently: true }) : null;
+
+function parseColorToRgb(colorStr: string): string {
+  if (
+    !colorStr ||
+    colorStr === 'transparent' ||
+    colorStr === 'inherit' ||
+    colorStr === 'initial' ||
+    colorStr === 'none'
+  ) {
+    return colorStr;
+  }
+
+  const trimmed = colorStr.trim();
+
+  // Quick return for standard hex, rgb, rgba without complex functions
+  if (/^#([0-9a-fA-F]{3,8})$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (!dummyCtx) return trimmed;
+
+  try {
+    dummyCtx.clearRect(0, 0, 1, 1);
+    dummyCtx.fillStyle = '#00000000';
+    dummyCtx.fillStyle = trimmed;
+    dummyCtx.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = dummyCtx.getImageData(0, 0, 1, 1).data;
+
+    if (a === 0 && (trimmed.includes('transparent') || trimmed.includes('rgba(0, 0, 0, 0)'))) {
+      return 'transparent';
+    }
+    if (a === 255) {
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+  } catch {
+    return 'rgb(0, 0, 0)';
+  }
+}
+
+/**
  * Converts image URL to Base64 data URL to avoid CORS / canvas taint issues.
  */
 async function urlToDataURL(url: string): Promise<string> {
@@ -34,88 +91,214 @@ async function urlToDataURL(url: string): Promise<string> {
 }
 
 /**
- * Replaces modern CSS color functions (oklab, oklch, color-mix, light-dark, lab, lch, hwb)
- * with standard rgb()/rgba() strings using browser native canvas 2D context.
+ * Creates an isolated, hidden <iframe> document without any Tailwind 4 / oklch stylesheets.
+ * Bakes computed styles (converted to rgb/rgba) as explicit inline style attributes on every node.
  */
-function replaceColorFunctions(str: string, ctx: CanvasRenderingContext2D | null): string {
-  if (
-    !str ||
-    (!str.includes('oklab') &&
-      !str.includes('oklch') &&
-      !str.includes('color-mix') &&
-      !str.includes('light-dark') &&
-      !str.includes('lab') &&
-      !str.includes('lch') &&
-      !str.includes('hwb'))
-  ) {
-    return str;
+function createIsolatedIframeContainer(targetElement: HTMLElement): {
+  iframe: HTMLIFrameElement;
+  clonedNode: HTMLElement;
+  cleanup: () => void;
+} {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.left = '-9999px';
+  iframe.style.top = '0';
+  iframe.style.width = '794px';
+  iframe.style.height = '1123px';
+  iframe.style.border = 'none';
+  iframe.style.visibility = 'hidden';
+  iframe.style.zIndex = '-9999';
+
+  document.body.appendChild(iframe);
+
+  const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!iframeDoc) {
+    throw new Error('Impossible d\'accéder à l\'iframe isolée.');
   }
-  if (!ctx) return str;
 
-  const keywords = ['oklab(', 'oklch(', 'color-mix(', 'light-dark(', 'lab(', 'lch(', 'hwb('];
+  iframeDoc.open();
+  iframeDoc.write(`<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #ffffff; width: 794px; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    #export-root { width: 794px; background: #ffffff; }
+  </style>
+</head>
+<body>
+  <div id="export-root"></div>
+</body>
+</html>`);
+  iframeDoc.close();
 
-  let result = str;
-  let maxLoop = 50;
+  const exportRoot = iframeDoc.getElementById('export-root')!;
+  const clonedNode = targetElement.cloneNode(true) as HTMLElement;
 
-  while (maxLoop-- > 0) {
-    let foundIndex = -1;
-    for (const kw of keywords) {
-      const idx = result.indexOf(kw);
-      if (idx !== -1 && (foundIndex === -1 || idx < foundIndex)) {
-        foundIndex = idx;
-      }
-    }
+  clonedNode.style.width = '794px';
+  clonedNode.style.maxWidth = '794px';
+  clonedNode.style.transform = 'none';
+  clonedNode.style.boxShadow = 'none';
+  clonedNode.style.borderRadius = '0px';
 
-    if (foundIndex === -1) break;
+  exportRoot.appendChild(clonedNode);
 
-    let depth = 0;
-    let endIdx = -1;
-    for (let i = foundIndex; i < result.length; i++) {
-      if (result[i] === '(') depth++;
-      else if (result[i] === ')') {
-        depth--;
-        if (depth === 0) {
-          endIdx = i;
-          break;
-        }
-      }
-    }
+  // Recursively copy computed styles from parent window DOM to iframe DOM
+  const originalNodes = [targetElement, ...Array.from(targetElement.querySelectorAll('*'))];
+  const clonedNodes = [clonedNode, ...Array.from(clonedNode.querySelectorAll('*'))];
 
-    if (endIdx === -1) break;
+  originalNodes.forEach((origNode, idx) => {
+    const cloneNode = clonedNodes[idx];
+    if (!(origNode instanceof HTMLElement) || !(cloneNode instanceof HTMLElement)) return;
 
-    const fullColorExpr = result.slice(foundIndex, endIdx + 1);
-
-    let rgbValue = fullColorExpr;
     try {
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = '#00000000';
-      ctx.fillStyle = fullColorExpr;
-      ctx.fillRect(0, 0, 1, 1);
-      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-      if (a === 0) {
-        rgbValue = 'rgba(0,0,0,0)';
-      } else if (a === 255) {
-        rgbValue = `rgb(${r}, ${g}, ${b})`;
-      } else {
-        rgbValue = `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+      const computed = window.getComputedStyle(origNode);
+
+      // Layout & Sizing
+      if (computed.display !== 'none') cloneNode.style.display = computed.display;
+      cloneNode.style.flexDirection = computed.flexDirection;
+      cloneNode.style.flexWrap = computed.flexWrap;
+      cloneNode.style.justifyContent = computed.justifyContent;
+      cloneNode.style.alignItems = computed.alignItems;
+      cloneNode.style.gap = computed.gap;
+      cloneNode.style.padding = computed.padding;
+      cloneNode.style.margin = computed.margin;
+      cloneNode.style.width = computed.width;
+      cloneNode.style.height = computed.height;
+      cloneNode.style.minWidth = computed.minWidth;
+      cloneNode.style.minHeight = computed.minHeight;
+      cloneNode.style.maxWidth = computed.maxWidth;
+      cloneNode.style.maxHeight = computed.maxHeight;
+
+      // Typography
+      cloneNode.style.fontFamily = computed.fontFamily;
+      cloneNode.style.fontSize = computed.fontSize;
+      cloneNode.style.fontWeight = computed.fontWeight;
+      cloneNode.style.lineHeight = computed.lineHeight;
+      cloneNode.style.letterSpacing = computed.letterSpacing;
+      cloneNode.style.textAlign = computed.textAlign;
+      cloneNode.style.textTransform = computed.textTransform;
+
+      // Borders & Radius
+      cloneNode.style.borderRadius = computed.borderRadius;
+      cloneNode.style.borderWidth = computed.borderWidth;
+      cloneNode.style.borderStyle = computed.borderStyle;
+
+      // Colors (Converted from oklch / lab / color-mix to rgb/rgba)
+      cloneNode.style.color = parseColorToRgb(computed.color);
+      cloneNode.style.backgroundColor = parseColorToRgb(computed.backgroundColor);
+      cloneNode.style.borderColor = parseColorToRgb(computed.borderColor);
+      cloneNode.style.borderTopColor = parseColorToRgb(computed.borderTopColor);
+      cloneNode.style.borderBottomColor = parseColorToRgb(computed.borderBottomColor);
+      cloneNode.style.borderLeftColor = parseColorToRgb(computed.borderLeftColor);
+      cloneNode.style.borderRightColor = parseColorToRgb(computed.borderRightColor);
+      cloneNode.style.outlineColor = parseColorToRgb(computed.outlineColor);
+
+      // SVG Elements
+      if (origNode instanceof SVGElement || origNode.tagName === 'svg' || origNode.tagName === 'path') {
+        const fill = computed.fill;
+        const stroke = computed.stroke;
+        if (fill && fill !== 'none') cloneNode.style.fill = parseColorToRgb(fill);
+        if (stroke && stroke !== 'none') cloneNode.style.stroke = parseColorToRgb(stroke);
       }
+
+      // Clear box shadow to avoid canvas artifacts or unparsed oklch shadows
+      cloneNode.style.boxShadow = 'none';
     } catch {
-      rgbValue = 'rgb(0,0,0)';
+      // Ignore element style copy issues
     }
+  });
 
-    result = result.slice(0, foundIndex) + rgbValue + result.slice(endIdx + 1);
-  }
+  const cleanup = () => {
+    if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
+    }
+  };
 
-  return result;
+  return { iframe, clonedNode, cleanup };
 }
 
-export async function exportToPDF(elementId: string, fileName: string = 'mon-cv.pdf'): Promise<void> {
+/**
+ * Computes natural section/item break points to avoid cutting lines of text in half.
+ */
+function computeSmartPageBreaks(
+  element: HTMLElement,
+  totalHeightPx: number,
+  pageHeightPx: number
+): number[] {
+  if (totalHeightPx <= pageHeightPx + 20) {
+    return [0, totalHeightPx];
+  }
+
+  const selectors = [
+    'section',
+    'article',
+    '.cv-section',
+    '.cv-item',
+    'h1',
+    'h2',
+    'h3',
+    'p',
+    'ul',
+    'ol',
+    'li',
+    '[data-section]',
+  ];
+
+  const candidateNodes = Array.from(element.querySelectorAll<HTMLElement>(selectors.join(',')));
+  const containerRect = element.getBoundingClientRect();
+
+  const itemBounds = candidateNodes
+    .map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        top: rect.top - containerRect.top,
+        bottom: rect.bottom - containerRect.top,
+      };
+    })
+    .filter((b) => b.bottom > b.top && b.top >= 0);
+
+  const breaks: number[] = [0];
+  let currentY = 0;
+
+  while (currentY + pageHeightPx < totalHeightPx - 30) {
+    const idealBreak = currentY + pageHeightPx;
+    let chosenBreak = idealBreak;
+
+    let bestCut = -1;
+    for (const b of itemBounds) {
+      if (b.top > currentY + 200 && b.top < idealBreak && b.bottom > idealBreak) {
+        bestCut = Math.max(bestCut, b.top);
+      }
+    }
+
+    if (bestCut > currentY + 300) {
+      chosenBreak = bestCut;
+    }
+
+    breaks.push(chosenBreak);
+    currentY = chosenBreak;
+  }
+
+  breaks.push(totalHeightPx);
+  return breaks;
+}
+
+/**
+ * Main exportToPDF function.
+ * Uses isolated iframe without Tailwind 4 oklch stylesheets + smart A4 page breaking.
+ */
+export async function exportToPDF(
+  elementId: string,
+  fileName: string = 'mon-cv.pdf'
+): Promise<void> {
   const element = document.getElementById(elementId);
   if (!element) {
     throw new Error(`Element #${elementId} non trouvé dans le DOM.`);
   }
 
-  // 1. Convert <img> tags to Base64 data URIs
+  // 1. Convert <img> tags to Base64 data URLs
   const images = Array.from(element.querySelectorAll('img'));
   const originalSrcs = images.map((img) => img.src);
 
@@ -132,121 +315,52 @@ export async function exportToPDF(elementId: string, fileName: string = 'mon-cv.
     console.warn('Error converting images for PDF:', err);
   }
 
-  // 2. Save original element styles for restoration
-  const originalWidth = element.style.width;
-  const originalMaxWidth = element.style.maxWidth;
-  const originalTransform = element.style.transform;
-  const originalBoxShadow = element.style.boxShadow;
-  const originalBorderRadius = element.style.borderRadius;
-
-  const dummyCanvas = document.createElement('canvas');
-  dummyCanvas.width = 1;
-  dummyCanvas.height = 1;
-  const dummyCtx = dummyCanvas.getContext('2d', { willReadFrequently: true });
+  // 2. Create isolated iframe without oklch stylesheets
+  const { clonedNode, cleanup } = createIsolatedIframeContainer(element);
 
   try {
-    // 3. Set standard A4 dimensions (794px = 210mm at 96dpi)
-    element.style.width = '794px';
-    element.style.maxWidth = '794px';
-    element.style.transform = 'none';
-    element.style.boxShadow = 'none';
-    element.style.borderRadius = '0px';
-
-    // 4. Capture with html2canvas
-    const canvas = await html2canvas(element, {
-      scale: 2, // ~300dpi resolution
+    // 3. Render canvas with html2canvas inside isolated iframe
+    const canvas = await html2canvas(clonedNode, {
+      scale: 2.5, // High resolution (~300 DPI)
       useCORS: true,
       allowTaint: false,
       logging: false,
       backgroundColor: '#ffffff',
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: 1200,
-      onclone: (clonedDoc, clonedEl) => {
-        // Sanitize style tags in cloned document
-        const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
-        styleTags.forEach((styleTag) => {
-          if (styleTag.textContent) {
-            styleTag.textContent = replaceColorFunctions(styleTag.textContent, dummyCtx);
-          }
-        });
-
-        // Sanitize inline style attributes in cloned document
-        const allClonedElements = Array.from(clonedDoc.querySelectorAll('*'));
-        allClonedElements.forEach((el) => {
-          if (el instanceof HTMLElement) {
-            const styleAttr = el.getAttribute('style');
-            if (styleAttr) {
-              el.setAttribute('style', replaceColorFunctions(styleAttr, dummyCtx));
-            }
-          }
-        });
-
-        // Explicitly sanitize computed color properties from original elements
-        const originalNodes = [element, ...Array.from(element.querySelectorAll('*'))];
-        const clonedNodes = [clonedEl, ...Array.from(clonedEl.querySelectorAll('*'))];
-
-        const colorProps = [
-          'color',
-          'background-color',
-          'border-color',
-          'border-top-color',
-          'border-bottom-color',
-          'border-left-color',
-          'border-right-color',
-          'outline-color',
-          'fill',
-          'stroke',
-          'box-shadow',
-        ];
-
-        originalNodes.forEach((origNode, i) => {
-          const clonedNode = clonedNodes[i];
-          if (!clonedNode || !(clonedNode instanceof HTMLElement) || !(origNode instanceof HTMLElement)) return;
-
-          try {
-            const computed = window.getComputedStyle(origNode);
-            colorProps.forEach((prop) => {
-              const val = computed.getPropertyValue(prop);
-              if (
-                val &&
-                (val.includes('oklab') ||
-                  val.includes('oklch') ||
-                  val.includes('color-mix') ||
-                  val.includes('light-dark') ||
-                  val.includes('lab') ||
-                  val.includes('lch'))
-              ) {
-                const fixedVal = replaceColorFunctions(val, dummyCtx);
-                clonedNode.style.setProperty(prop, fixedVal, 'important');
-              }
-            });
-          } catch {
-            // ignore
-          }
-        });
-      },
+      windowWidth: 794,
     });
 
-    // 5. Slice canvas into crisp A4 pages
     const imgWidthPx = canvas.width;
-    const imgHeightPx = canvas.height;
-    const pageHeightPx = Math.floor(imgWidthPx * (297 / 210));
-    const totalPages = Math.max(1, Math.ceil(imgHeightPx / pageHeightPx));
+    const unscaledPageHeightPx = 794 * (297 / 210); // ~1123px at 794px width
+    const elementHeightPx = clonedNode.offsetHeight || 1123;
+    const scaleRatio = canvas.width / 794;
+
+    // 4. Compute smart break points
+    const breaksInElement = computeSmartPageBreaks(
+      clonedNode,
+      elementHeightPx,
+      unscaledPageHeightPx
+    );
 
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
       format: 'a4',
+      compress: true,
     });
 
-    for (let i = 0; i < totalPages; i++) {
-      const srcY = i * pageHeightPx;
-      const srcH = Math.min(pageHeightPx, imgHeightPx - srcY);
+    for (let i = 0; i < breaksInElement.length - 1; i++) {
+      const startYUnscaled = breaksInElement[i];
+      const endYUnscaled = breaksInElement[i + 1];
+
+      const startYCanvas = Math.round(startYUnscaled * scaleRatio);
+      const endYCanvas = Math.round(endYUnscaled * scaleRatio);
+      const sliceHCanvas = endYCanvas - startYCanvas;
+
+      if (sliceHCanvas <= 0) continue;
 
       const pageCanvas = document.createElement('canvas');
       pageCanvas.width = imgWidthPx;
-      pageCanvas.height = pageHeightPx;
+      pageCanvas.height = Math.round(unscaledPageHeightPx * scaleRatio);
 
       const pageCtx = pageCanvas.getContext('2d');
       if (pageCtx) {
@@ -255,17 +369,17 @@ export async function exportToPDF(elementId: string, fileName: string = 'mon-cv.
         pageCtx.drawImage(
           canvas,
           0,
-          srcY,
+          startYCanvas,
           imgWidthPx,
-          srcH,
+          sliceHCanvas,
           0,
           0,
           imgWidthPx,
-          srcH
+          sliceHCanvas
         );
       }
 
-      const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.98);
+      const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.95);
 
       if (i > 0) {
         pdf.addPage('a4', 'p');
@@ -276,21 +390,20 @@ export async function exportToPDF(elementId: string, fileName: string = 'mon-cv.
 
     pdf.save(fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`);
   } finally {
-    // 6. Restore original element styles
-    element.style.width = originalWidth;
-    element.style.maxWidth = originalMaxWidth;
-    element.style.transform = originalTransform;
-    element.style.boxShadow = originalBoxShadow;
-    element.style.borderRadius = originalBorderRadius;
-
-    // Restore original image sources
+    cleanup();
     images.forEach((img, idx) => {
       img.src = originalSrcs[idx];
     });
   }
 }
 
-export async function exportToPNG(elementId: string, fileName: string = 'mon-cv.png'): Promise<void> {
+/**
+ * High quality PNG Image export using isolated iframe.
+ */
+export async function exportToPNG(
+  elementId: string,
+  fileName: string = 'mon-cv.png'
+): Promise<void> {
   const element = document.getElementById(elementId);
   if (!element) {
     throw new Error(`Element #${elementId} non trouvé dans le DOM.`);
@@ -312,47 +425,16 @@ export async function exportToPNG(elementId: string, fileName: string = 'mon-cv.
     console.warn('Error converting images for PNG:', err);
   }
 
-  const originalWidth = element.style.width;
-  const originalMaxWidth = element.style.maxWidth;
-  const originalTransform = element.style.transform;
-  const originalBoxShadow = element.style.boxShadow;
-  const originalBorderRadius = element.style.borderRadius;
-
-  const dummyCanvas = document.createElement('canvas');
-  dummyCanvas.width = 1;
-  dummyCanvas.height = 1;
-  const dummyCtx = dummyCanvas.getContext('2d', { willReadFrequently: true });
+  const { clonedNode, cleanup } = createIsolatedIframeContainer(element);
 
   try {
-    element.style.width = '794px';
-    element.style.maxWidth = '794px';
-    element.style.transform = 'none';
-    element.style.boxShadow = 'none';
-    element.style.borderRadius = '0px';
-
-    const canvas = await html2canvas(element, {
-      scale: 2,
+    const canvas = await html2canvas(clonedNode, {
+      scale: 2.5,
       useCORS: true,
       allowTaint: false,
       logging: false,
       backgroundColor: '#ffffff',
-      onclone: (clonedDoc, clonedEl) => {
-        const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
-        styleTags.forEach((styleTag) => {
-          if (styleTag.textContent) {
-            styleTag.textContent = replaceColorFunctions(styleTag.textContent, dummyCtx);
-          }
-        });
-        const allClonedElements = Array.from(clonedDoc.querySelectorAll('*'));
-        allClonedElements.forEach((el) => {
-          if (el instanceof HTMLElement) {
-            const styleAttr = el.getAttribute('style');
-            if (styleAttr) {
-              el.setAttribute('style', replaceColorFunctions(styleAttr, dummyCtx));
-            }
-          }
-        });
-      },
+      windowWidth: 794,
     });
 
     const link = document.createElement('a');
@@ -360,20 +442,98 @@ export async function exportToPNG(elementId: string, fileName: string = 'mon-cv.
     link.href = canvas.toDataURL('image/png');
     link.click();
   } finally {
-    element.style.width = originalWidth;
-    element.style.maxWidth = originalMaxWidth;
-    element.style.transform = originalTransform;
-    element.style.boxShadow = originalBoxShadow;
-    element.style.borderRadius = originalBorderRadius;
-
+    cleanup();
     images.forEach((img, idx) => {
       img.src = originalSrcs[idx];
     });
   }
 }
 
+/**
+ * Standalone HTML web page export.
+ */
+export function exportToHTML(
+  cvData: CVData,
+  elementId: string = 'cv-preview-container',
+  fileName?: string
+): void {
+  const element = document.getElementById(elementId);
+  if (!element) {
+    throw new Error(`Element #${elementId} non trouvé.`);
+  }
+
+  const name = cvData.personalInfo.fullName || 'cv';
+  const finalFileName = fileName || `${name}_CVKO.html`.replace(/\s+/g, '_');
+
+  const htmlContent = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CV - ${cvData.personalInfo.fullName || 'Curriculum Vitae'}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: #f1f5f9;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 2rem 1rem;
+      margin: 0;
+    }
+    .cv-card {
+      background: white;
+      max-width: 800px;
+      width: 100%;
+      border-radius: 12px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+    @media print {
+      body {
+        padding: 0;
+        background: white;
+      }
+      .cv-card {
+        box-shadow: none;
+        max-width: 100%;
+        border-radius: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="cv-card">
+    ${element.innerHTML}
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = finalFileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Text output formatted for Applicant Tracking Systems (ATS).
+ */
 export function generateATSText(cvData: CVData): string {
-  const { personalInfo, workExperiences, educations, skills, languages, projects, certifications, customSections } = cvData;
+  const {
+    personalInfo,
+    workExperiences,
+    educations,
+    skills,
+    languages,
+    projects,
+    certifications,
+    customSections,
+  } = cvData;
   const lines: string[] = [];
 
   lines.push(`=== ${personalInfo.fullName || 'CURRICULUM VITAE'} ===`);
@@ -384,9 +544,13 @@ export function generateATSText(cvData: CVData): string {
   if (personalInfo.email) contact.push(`Email: ${personalInfo.email}`);
   if (personalInfo.phone) contact.push(`Téléphone: ${personalInfo.phone}`);
   if (personalInfo.location) contact.push(`Adresse: ${personalInfo.location}`);
+  if (personalInfo.birthDate) contact.push(`Date de naissance: ${personalInfo.birthDate}`);
+  if (personalInfo.birthPlace) contact.push(`Lieu de naissance: ${personalInfo.birthPlace}`);
+  if (personalInfo.nationality) contact.push(`Nationalité: ${personalInfo.nationality}`);
   if (personalInfo.linkedin) contact.push(`LinkedIn: ${personalInfo.linkedin}`);
   if (personalInfo.website) contact.push(`Site web: ${personalInfo.website}`);
   if (personalInfo.github) contact.push(`GitHub: ${personalInfo.github}`);
+
   if (contact.length > 0) {
     lines.push('--- COORDONNÉES ---');
     lines.push(contact.join('\n'));
@@ -403,7 +567,9 @@ export function generateATSText(cvData: CVData): string {
     lines.push('--- EXPÉRIENCES PROFESSIONNELLES ---');
     workExperiences.forEach((exp) => {
       lines.push(`${exp.position} - ${exp.company}`);
-      lines.push(`Période: ${exp.startDate || ''} - ${exp.current ? 'Présent' : exp.endDate || ''}`);
+      lines.push(
+        `Période: ${exp.startDate || ''} - ${exp.current ? 'Présent' : exp.endDate || ''}`
+      );
       if (exp.location) lines.push(`Lieu: ${exp.location}`);
       if (exp.description) lines.push(exp.description);
       lines.push('');
@@ -414,7 +580,9 @@ export function generateATSText(cvData: CVData): string {
     lines.push('--- FORMATIONS ET DIPLÔMES ---');
     educations.forEach((edu) => {
       lines.push(`${edu.degree} - ${edu.institution}`);
-      lines.push(`Période: ${edu.startDate || ''} - ${edu.current ? 'En cours' : edu.endDate || ''}`);
+      lines.push(
+        `Période: ${edu.startDate || ''} - ${edu.current ? 'En cours' : edu.endDate || ''}`
+      );
       if (edu.fieldOfStudy) lines.push(`Domaine: ${edu.fieldOfStudy}`);
       if (edu.description) lines.push(edu.description);
       lines.push('');
@@ -457,7 +625,11 @@ export function generateATSText(cvData: CVData): string {
       if (cSec.title && cSec.items.length > 0) {
         lines.push(`--- ${cSec.title.toUpperCase()} ---`);
         cSec.items.forEach((item) => {
-          lines.push(`• ${item.title}${item.subtitle ? ` (${item.subtitle})` : ''} ${item.date ? `[${item.date}]` : ''}`);
+          lines.push(
+            `• ${item.title}${item.subtitle ? ` (${item.subtitle})` : ''} ${
+              item.date ? `[${item.date}]` : ''
+            }`
+          );
           if (item.description) lines.push(`  ${item.description}`);
         });
         lines.push('');
@@ -468,6 +640,9 @@ export function generateATSText(cvData: CVData): string {
   return lines.join('\n');
 }
 
+/**
+ * Triggers native browser print dialog.
+ */
 export function printCV(): void {
   window.print();
 }

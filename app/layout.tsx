@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { SWRegister } from '@/components/SWRegister';
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   title: 'CVKO — Studio & Générateur de CV Professionnel',
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning className="bg-[#F7F7F7] antialiased">
         <SWRegister />
         {children}
+        <Analytics />
       </body>
     </html>
   );
